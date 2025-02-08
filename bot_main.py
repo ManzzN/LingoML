@@ -22,9 +22,6 @@ from messages import MESSAGES, escape_markdown_v2
 from openai_client_wrapper import call_llm, extract_json
 from scheduler import schedule_notifications
 
-# ===========================================
-#     GLOBAL VARIABLES / IN-MEMORY STORAGE
-# ===========================================
 USER_PARAGRAPHS = {}
 USER_STATES = {}
 LESSON_SESSIONS = {}
@@ -32,23 +29,19 @@ LLM_CHAT_HISTORY = {}
 LESSON_RESPONSES = {}
 ESSAY_ASSIGNMENT_STATE = {}
 
-# State constants
 LANGUAGE_SELECTION = "LANGUAGE"
 ASSESSMENT = "ASSESSMENT"
 INTRODUCTION = "INTRODUCTION"
 LEARNING_MODE = "LEARNING_MODE"
 ESSAY_EVALUATION = "ESSAY_EVALUATION"
 
-# Initialize bot
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="MarkdownV2")
-
 
 @bot.message_handler(commands=['start'])
 def cmd_start(message):
     user_id = message.from_user.id
     user_data = read_user_data()
 
-    # If user already introduced name & age, skip setup
     if user_id in user_data and user_data[user_id].get('name') and user_data[user_id].get('age'):
         user_language = user_data[user_id].get('language', 'English')
         messages = {
@@ -77,7 +70,6 @@ def cmd_start(message):
         reply_markup=keyboard
     )
 
-
 @bot.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == LANGUAGE_SELECTION)
 def process_language(message):
     user_id = message.from_user.id
@@ -100,7 +92,6 @@ def process_language(message):
     bot.send_message(message.chat.id, escape_markdown_v2(MESSAGES["send_paragraph"][language_choice]), reply_markup=ReplyKeyboardRemove())
     USER_STATES[user_id] = ASSESSMENT
 
-
 @bot.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == ASSESSMENT)
 def process_assessment(message):
     user_id = message.from_user.id
@@ -120,20 +111,15 @@ def process_assessment(message):
     bot.send_chat_action(message.chat.id, "typing")
     msg = bot.send_message(message.chat.id, escape_markdown_v2(MESSAGES["assessing"][user_language]))
 
-    # We’re going to do a single-call here. 
-    # If you want streaming, you can adapt it from your original code.
     try:
         response = call_llm(system_prompt)
         bot.delete_message(message.chat.id, msg.message_id)
 
-        # Extract the proficiency level
         proficiency_level_match = re.search(r'```(.*?)```', response, re.DOTALL)
         proficiency_level = proficiency_level_match.group(1).strip() if proficiency_level_match else "Unknown"
 
-        # Remove the triple backticks content from the text
         assessment_text_without_level = re.sub(r'```.*?```', '', response).strip()
 
-        # Update user data with the assessed level
         write_user_data(user_id, english_level=proficiency_level)
 
         final_message = (
@@ -143,7 +129,6 @@ def process_assessment(message):
         )
         bot.send_message(message.chat.id, final_message)
 
-        # Add a keyboard to retake or continue
         keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         retake_test = {
             "English": "🔄 Retake Test",
@@ -168,14 +153,12 @@ def process_assessment(message):
         logging.error(str(e))
         bot.send_message(message.chat.id, escape_markdown_v2(MESSAGES["error"][user_language]))
 
-
 @bot.message_handler(commands=['cancel'])
 def cmd_cancel(message):
     user_id = message.from_user.id
     if user_id in USER_STATES:
         USER_STATES.pop(user_id)
     bot.send_message(message.chat.id, escape_markdown_v2(MESSAGES["cancel"]["English"]), reply_markup=ReplyKeyboardRemove())
-
 
 @bot.message_handler(
     func=lambda message: message.text in [
@@ -187,7 +170,6 @@ def handle_continue_setup(message):
     user_id = message.from_user.id
     bot.send_message(message.chat.id, escape_markdown_v2("⏳"))
     process_continue_setup(user_id, message.chat.id)
-
 
 @bot.message_handler(
     func=lambda message: message.text in [
@@ -208,7 +190,6 @@ def handle_retake_test(message):
 
     bot.send_message(message.chat.id, escape_markdown_v2(text_msg), reply_markup=ReplyKeyboardRemove())
     USER_STATES[user_id] = ASSESSMENT
-
 
 def process_continue_setup(user_id, chat_id):
     user_data = read_user_data()
@@ -233,10 +214,8 @@ def process_continue_setup(user_id, chat_id):
 
     bot.send_message(chat_id, f"{escape_markdown_v2(MESSAGES['personalized_topics'].get(user_language))}\n\n{escape_markdown_v2(response)}")
 
-    # Save to plan data
     write_plan_data(user_id, response)
 
-    # Ask user to introduce themselves
     intro_prompts = {
         "English": "Please introduce yourself briefly (include your name and age).",
         "Russian": "Пожалуйста, кратко представьтесь (укажите имя и возраст).",
@@ -246,7 +225,6 @@ def process_continue_setup(user_id, chat_id):
     }
     bot.send_message(chat_id, escape_markdown_v2(intro_prompts.get(user_language, intro_prompts["English"])))
     USER_STATES[user_id] = INTRODUCTION
-
 
 @bot.message_handler(func=lambda message: USER_STATES.get(message.from_user.id) == INTRODUCTION)
 def process_introduction(message):
@@ -279,7 +257,6 @@ def process_introduction(message):
         bot.send_message(message.chat.id, escape_markdown_v2(MESSAGES["introduction_error"][user_language]))
         return
 
-    # Next step: Show "Finish Setup" button
     finish_button_text = {
         "English": "➡️ Finish setup",
         "Russian": "➡️ Завершить настройку",
@@ -292,7 +269,6 @@ def process_introduction(message):
     markup.add(InlineKeyboardButton(finish_button_text, callback_data="finish_setup"))
     bot.send_message(message.chat.id, escape_markdown_v2("Please proceed to the learning mode when you are ready:"), reply_markup=markup)
     USER_STATES[user_id] = LEARNING_MODE
-
 
 @bot.callback_query_handler(func=lambda call: call.data == "finish_setup")
 def handle_finish_setup(call):
@@ -341,7 +317,6 @@ def handle_finish_setup(call):
     )
     USER_STATES.pop(user_id, None)
 
-
 @bot.callback_query_handler(func=lambda call: call.data == "cancel_registration")
 def handle_cancel_registration(call):
     user_id = call.from_user.id
@@ -350,7 +325,7 @@ def handle_cancel_registration(call):
 
     if user_id in user_data:
         del user_data[user_id]
-        # Overwrite the entire CSV
+
         with open("users.csv", mode='w', newline='', encoding='utf-8') as file:
             writer = csv.DictWriter(file, fieldnames=['user_id', 'language', 'english_level', 'name', 'age', 'score'])
             writer.writeheader()
@@ -364,28 +339,18 @@ def handle_cancel_registration(call):
         "Russian": "✅ *Ваша регистрация отменена и все данные удалены.*"
     }
     bot.send_message(call.message.chat.id, escape_markdown_v2(localized_cancel_msg.get(user_language, localized_cancel_msg["English"])))
-    # Start again
+
     cmd_start(call.message)
 
-
-# ===========================================
-#  EXAMPLE: SCHEDULER START (in separate file)
-# ===========================================
 @bot.message_handler(commands=['run_scheduler'])
 def run_scheduler_cmd(message):
-    # Start the daily reminder thread
+
     schedule_notifications(bot)
     bot.send_message(message.chat.id, "Daily notifications have been scheduled at 14:00!")
 
-
-# (Below would follow your reading lesson, listening lesson logic, essay submission, etc.)
-# For brevity, not repeating the entire code block from your original script.
-# Add your handlers for "start_listening", "start_reading", "start_vocab", "start_writing_assignment" etc. 
-# All are consistent with your original code.
-
 def start_bot():
     print("🚀 Bot is running...")
-    schedule_notifications(bot)  # Optional to start automatically
+    schedule_notifications(bot)  
     bot.infinity_polling()
 
 if __name__ == "__main__":
