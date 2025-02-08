@@ -1,5 +1,5 @@
 # LingoML
-
+![alt text]([http://url/to/img.png](https://i.ibb.co.com/DgjSmXmR/photo-2025-02-03-20-06-49.jpg))
 This is a multi-file Python Telegram bot to help users improve their English skills. It uses OpenAI's API for assessments, topic generation, and essay evaluations.
 
 ## Features
